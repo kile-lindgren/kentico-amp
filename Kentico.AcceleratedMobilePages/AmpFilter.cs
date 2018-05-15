@@ -31,7 +31,7 @@ namespace Kentico.AcceleratedMobilePages
             {
                 finalHtml = TransformToAmpHtml(finalHtml);
             }
-            else if (state == Constants.ENABLED_AND_INACTIVE)
+            else if (state == Constants.ENABLED_AND_INACTIVE && DocumentContext.CurrentDocumentCulture.CultureCode == "en-US")
             {
                 finalHtml = AppendAmpHtmlLink(finalHtml);
             }
@@ -73,9 +73,9 @@ namespace Kentico.AcceleratedMobilePages
                              GetFriendlyExtension();
             string metaTag = String.Format(Constants.AMP_AMP_HTML_LINK, ampLink) + Constants.NEW_LINE;
             // Insert meta tag
-            finalHtml = Regex.Replace(finalHtml, "</head>", metaTag + "</head>");
+            //finalHtml = Regex.Replace(finalHtml, "</head>", metaTag + "</head>");
 
-            return finalHtml;
+            return finalHtml.Replace("</head>", metaTag + "</head>");
         }
 
 
@@ -243,7 +243,7 @@ namespace Kentico.AcceleratedMobilePages
                         Constants.AMP_CHARSET + Constants.NEW_LINE +
                         ampRuntimeScript + Constants.NEW_LINE +
                         customElementsScripts +
-                        String.Format(Constants.AMP_CANONICAL_HTML_LINK, canonicalLink) + Constants.NEW_LINE +
+                        //String.Format(Constants.AMP_CANONICAL_HTML_LINK, canonicalLink) + Constants.NEW_LINE +
                         Constants.AMP_VIEWPORT + Constants.NEW_LINE +
                         Constants.AMP_BOILERPLATE_CODE + Constants.NEW_LINE +
                         String.Format(Constants.AMP_CUSTOM_STYLE, styles) + Constants.NEW_LINE;
