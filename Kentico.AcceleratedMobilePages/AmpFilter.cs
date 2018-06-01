@@ -8,6 +8,8 @@ using CMS.OutputFilter;
 using CMS.PortalEngine;
 using CMS.SiteProvider;
 using HtmlAgilityPack;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Kentico.AcceleratedMobilePages
 {
@@ -17,6 +19,8 @@ namespace Kentico.AcceleratedMobilePages
         /// String for importing custom elements in head tag
         /// </summary>
         private string customElementsScripts;
+
+        private string additionalCSS;
 
 
         /// <summary>
@@ -49,13 +53,28 @@ namespace Kentico.AcceleratedMobilePages
             // Process the resulting HTML using HTML Agility Pack parser
             HtmlDocument doc = new HtmlDocument();
             doc.LoadHtml(finalHtml);
+
+            //Site specific changes
+            FixPanels(doc);
+            RemoveAmpClassedElements(doc);
+
+            //move the amp-sidebar
+            MoveAmpSidebar(doc);
+            MoveAmpAnalytics(doc);
+
+            //youtube embeds
+            ReplaceYouTubeEmbeds(doc);
+
             RemoveRestrictedElements(doc);
             ResolveComplexElements(doc);
             ReplaceRegularTagsByAmpTags(doc);
 
+
             // Do the rest using regular expressions
             finalHtml = InsertCompulsoryMarkupAndCss(doc.DocumentNode.InnerHtml);
             finalHtml = PerformRegexCorrections(finalHtml);
+
+            
 
             return finalHtml;
         }
@@ -194,7 +213,7 @@ namespace Kentico.AcceleratedMobilePages
         /// <param name="doc">The complete HtmlDocument</param>
         private void ReplaceRegularTagsByAmpTags(HtmlDocument doc)
         {
-            ReplaceElement(doc, Constants.XPATH_IMG, Constants.XPATH_IMG_REPLACEMENT);
+            ReplaceElement(doc, Constants.XPATH_IMG, Constants.XPATH_IMG_REPLACEMENT, Constants.XPATH_IMG_ATTRIBUTES);
             if (ReplaceElement(doc, Constants.XPATH_VIDEO, Constants.XPATH_VIDEO_REPLACEMENT))
             {
                 string ampCustomVideo = String.Format(Constants.AMP_CUSTOM_ELEMENT_AMP_VIDEO, Settings.AmpFilterVideoScriptUrl);
@@ -205,7 +224,7 @@ namespace Kentico.AcceleratedMobilePages
                 string ampCustomAudio = String.Format(Constants.AMP_CUSTOM_ELEMENT_AMP_AUDIO, Settings.AmpFilterAudioScriptUrl);
                 customElementsScripts += ampCustomAudio + Constants.NEW_LINE;
             }
-            if (ReplaceElement(doc, Constants.XPATH_IFRAME, Constants.XPATH_IFRAME_REPLACEMENT))
+            if (ReplaceElement(doc, Constants.XPATH_IFRAME, Constants.XPATH_IFRAME_REPLACEMENT, Constants.XPATH_IFRAME_ATTRIBUTES))
             {
                 string ampCustomIframe = String.Format(Constants.AMP_CUSTOM_ELEMENT_AMP_IFRAME, Settings.AmpFilterIframeScriptUrl);
                 customElementsScripts += ampCustomIframe + Constants.NEW_LINE;
@@ -297,6 +316,8 @@ namespace Kentico.AcceleratedMobilePages
                 }
             }
 
+            cssText += additionalCSS;
+
             // Resolve macros
             cssText = MacroResolver.Resolve(cssText);
 
@@ -331,12 +352,48 @@ namespace Kentico.AcceleratedMobilePages
         /// <param name="replacement">New name of the element</param>
         private bool ReplaceElement(HtmlDocument doc, string xPath, string replacement)
         {
+            return ReplaceElement(doc, xPath, replacement, null);
+        }
+
+        /// <summary>
+        /// Replaces element using HTML parser and return true if at least one node was replaced.
+        /// </summary>
+        /// <param name="doc">The complete HtmlDocument</param>
+        /// <param name="xPath">XPath specifying the element</param>
+        /// <param name="replacement">New name of the element</param>
+        /// <param name="attributeDefaults">List of attrbiutes we need to ensure exist and the defualt value</param>
+        private bool ReplaceElement(HtmlDocument doc, string xPath, string replacement, List<Tuple<string, string, string, string>> attributeAdjustments)
+        {
             var nodes = doc.DocumentNode.SelectNodes(xPath);
             if (nodes != null)
             {
                 foreach (var node in nodes)
                 {
                     node.Name = replacement;
+                    if (attributeAdjustments != null)
+                    {
+                        foreach (var adjustment in attributeAdjustments)
+                        {
+
+                            if (adjustment.Item1 == "remove")
+                            {
+                                node.Attributes.Remove(adjustment.Item2);
+                            }
+                            else if (adjustment.Item1 == "update")
+                            {
+                                var attributevalue = node.GetAttributeValue(adjustment.Item2, String.Empty);
+                                if (attributevalue == adjustment.Item3)
+                                {
+                                    node.SetAttributeValue(adjustment.Item2, adjustment.Item4);
+                                }
+                            }
+
+
+
+                        }
+
+
+                    }
                 }
             }
             return (nodes != null);
@@ -367,7 +424,7 @@ namespace Kentico.AcceleratedMobilePages
         private string GetFriendlyExtension()
         {
             var extensions = Settings.CmsFriendlyUrlExtension;
-            if(extensions.Length > 0)
+            if (extensions.Length > 0)
             {
                 var extensionlist = extensions.Split(';');
                 if (extensionlist.Length > 0)
@@ -376,6 +433,113 @@ namespace Kentico.AcceleratedMobilePages
                 }
             }
             return extensions;
+        }
+
+
+        private void FixPanels(HtmlDocument doc)
+        {
+            //find panels with bg-images
+            var nodes = doc.DocumentNode.SelectNodes("//div[contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"panel\") and contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"bg-image\") or contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"cta-container\")]");
+            if(nodes != null && nodes.Any()) { 
+                var i = 0;
+                foreach (var node in nodes)
+                {
+                    var style = node.GetAttributeValue("style", String.Empty);
+                    if (!String.IsNullOrEmpty(style))
+                    {
+                        if (String.IsNullOrEmpty(node.Id))
+                        {
+                            node.Id = "amp-panel-id-" + i++;
+                        }
+
+                        additionalCSS += "#" + node.Id + "{" + style + "}" + Constants.NEW_LINE;
+                    }
+                }
+            }
+        }
+
+        private void ReplaceYouTubeEmbeds(HtmlDocument doc)
+        {
+            var nodes = doc.DocumentNode.SelectNodes("//iframe[contains(translate(@src,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"youtube.com\") or contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"youtu.be\")]");
+
+            if (nodes != null && nodes.Any())
+            {
+                customElementsScripts += "<script async custom-element=\"amp-youtube\" src=\"https://cdn.ampproject.org/v0/amp-youtube-0.1.js\"></script>" + Constants.NEW_LINE;
+
+                foreach (var node in nodes)
+                {
+                    string url = node.GetAttributeValue("src", "");
+                    string youtubeid = "";
+                    if (url.Contains("youtube.com"))
+                    {
+                        youtubeid = URLHelper.GetUrlParameter(url, "v");
+                        if (String.IsNullOrEmpty(youtubeid))
+                        {
+                            var path = URLHelper.RemoveQuery(url).Replace(ValidationHelper.GetString(URLHelper.GetProtocol(url) + "://", ""), "").Replace(URLHelper.GetDomain(url), "");
+                            youtubeid = path.Replace("/embed/", "");
+                        }
+                    }
+                    else if (url.Contains("youtu.be"))
+                    {
+                        youtubeid = url.Replace(ValidationHelper.GetString(URLHelper.GetProtocol(url), ""), "").Replace(URLHelper.GetDomain(url), "");
+                    }
+
+                    if (!String.IsNullOrEmpty(youtubeid))
+                    {
+                        node.Name = "amp-youtube";
+                        node.SetAttributeValue("data-videoid", youtubeid);
+                        node.SetAttributeValue("layout", "responsive");
+                        node.Attributes.Remove("src");
+                        node.Attributes.Remove("frameborder");
+
+                    }
+                }
+            }
+        }
+
+        private void RemoveAmpClassedElements(HtmlDocument doc)
+        {
+            var nodes = doc.DocumentNode.SelectNodes("//*[contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"remove-amp\") or contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"hide-amp\")]");
+            if (nodes != null) { 
+                foreach (var node in nodes)
+                {
+                    node.Remove();
+                }
+            }
+        }
+
+        private void MoveAmpSidebar(HtmlDocument doc)
+        {
+            var nodes = doc.DocumentNode.SelectNodes("//amp-sidebar");
+            if (nodes != null)
+            {
+                var body = doc.DocumentNode.SelectSingleNode("//body");
+                if(body != null) { 
+                    foreach (var node in nodes)
+                    {
+                        var newnode = node.Clone();
+                        node.Remove();
+                        body.InsertAfter(newnode, body.LastChild);
+                    }
+                }
+            }
+        }
+        private void MoveAmpAnalytics(HtmlDocument doc)
+        {
+            var nodes = doc.DocumentNode.SelectNodes("//amp-analytics");
+            if (nodes != null)
+            {
+                var body = doc.DocumentNode.SelectSingleNode("//body");
+                if (body != null)
+                {
+                    foreach (var node in nodes)
+                    {
+                        var newnode = node.Clone();
+                        node.Remove();
+                        body.InsertBefore(newnode, body.FirstChild);
+                    }
+                }
+            }
         }
     }
 }

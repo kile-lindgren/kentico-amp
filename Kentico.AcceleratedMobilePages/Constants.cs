@@ -1,4 +1,7 @@
-﻿namespace Kentico.AcceleratedMobilePages
+﻿using System;
+using System.Collections.Generic;
+
+namespace Kentico.AcceleratedMobilePages
 {
     public class Constants
     {
@@ -66,7 +69,8 @@
             "//object",
             "//param",
             "//applet",
-            "//embed"
+            "//embed",
+            "//head/noscript"
         };
 
         // Remove attribute
@@ -80,11 +84,28 @@
         // Replacing HTML tags by AMP HTML equivalents
         public const string XPATH_IMG = "//img";
         public const string XPATH_IMG_REPLACEMENT = "amp-img";
+        public static List<Tuple<string, string, string, string>> XPATH_IMG_ATTRIBUTES = new List<Tuple< string, string, string, string>>()
+        {
+            /*
+            Tuple.Create("update", "width", "", "200"),
+            Tuple.Create("update", "height", "", "200"),
+            Tuple.Create("update", "layout", "", "responsive"),
+            */
+            Tuple.Create("remove", "border", "", ""),
+        };
+
+
         public const string XPATH_VIDEO = "//video";
         public const string XPATH_VIDEO_REPLACEMENT = "amp-video";
         public const string XPATH_AUDIO = "//audio";
         public const string XPATH_AUDIO_REPLACEMENT = "amp-audio";
         public const string XPATH_IFRAME = "//iframe";
         public const string XPATH_IFRAME_REPLACEMENT = "amp-iframe";
+        public static List<Tuple<string, string, string, string>> XPATH_IFRAME_ATTRIBUTES = new List<Tuple<string, string, string, string>>()
+        {
+            Tuple.Create("update", "width", "100%", "600"),
+            //Tuple.Create("update", "sandbox", "", "allow-scripts allow-same-origin"),
+            Tuple.Create("remove", "allowtransparency", "", ""),
+        };
     }
 }
