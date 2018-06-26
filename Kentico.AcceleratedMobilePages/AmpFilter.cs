@@ -21,7 +21,7 @@ namespace Kentico.AcceleratedMobilePages
         private string customElementsScripts;
 
         private string additionalCSS;
-
+        private List<string> processedPanels = new List<string>();
 
         /// <summary>
         /// If the filter is enabled for current page, final HTML will be modified
@@ -39,6 +39,16 @@ namespace Kentico.AcceleratedMobilePages
             {
                 finalHtml = AppendAmpHtmlLink(finalHtml);
             }
+            else if (state == Constants.DISABLED)
+            {
+                string currentDomain = CMSHttpContext.Current.Request.Url.IsDefaultPort ? CMSHttpContext.Current.Request.Url.Host : CMSHttpContext.Current.Request.Url.Host + ":" + CMSHttpContext.Current.Request.Url.Port;
+                string ampDomain = Settings.AmpFilterDomainAlias;
+                if (currentDomain.Equals(ampDomain))
+                {
+                    URLHelper.Redirect(DocumentContext.CurrentDocument.AbsoluteURL);
+                }
+            }
+
         }
 
 
@@ -57,6 +67,7 @@ namespace Kentico.AcceleratedMobilePages
             //Site specific changes
             FixPanels(doc);
             RemoveAmpClassedElements(doc);
+            FloatAmpImages(doc);
 
             //move the amp-sidebar
             MoveAmpSidebar(doc);
@@ -75,7 +86,6 @@ namespace Kentico.AcceleratedMobilePages
             finalHtml = PerformRegexCorrections(finalHtml);
 
             
-
             return finalHtml;
         }
 
@@ -451,8 +461,37 @@ namespace Kentico.AcceleratedMobilePages
                         {
                             node.Id = "amp-panel-id-" + i++;
                         }
+                        if (!processedPanels.Contains(node.Id)) { 
+                            additionalCSS += "#" + node.Id + "{" + style + "}" + Constants.NEW_LINE;
+                            processedPanels.Add(node.Id);
+                        }
+                    }
+                }
+            }
+        }
 
-                        additionalCSS += "#" + node.Id + "{" + style + "}" + Constants.NEW_LINE;
+        private void FloatAmpImages(HtmlDocument doc)
+        {
+            var nodes = doc.DocumentNode.SelectNodes("//img[contains(translate(@style,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),\"float:\")]");
+            if (nodes != null && nodes.Any())
+            {
+                var i = 0;
+                foreach (var node in nodes)
+                {
+                    var style = node.GetAttributeValue("style", String.Empty).Replace(" ","");
+                    if (!String.IsNullOrEmpty(style))
+                    {
+                        var classname = node.GetAttributeValue("class", String.Empty);
+                        if (style.Contains("float:left;"))
+                        {
+                            classname += " iqs-image-left";
+                            node.SetAttributeValue("class", classname);
+                        }
+                        else if (style.Contains("float:right;"))
+                        {
+                            classname += " iqs-image-right";
+                            node.SetAttributeValue("class", classname);
+                        }
                     }
                 }
             }
@@ -490,6 +529,8 @@ namespace Kentico.AcceleratedMobilePages
                         node.SetAttributeValue("data-videoid", youtubeid);
                         node.SetAttributeValue("layout", "responsive");
                         node.Attributes.Remove("src");
+                        node.Attributes.Remove("allow");
+                        node.Attributes.Remove("allowfullscreen");
                         node.Attributes.Remove("frameborder");
 
                     }
